@@ -1,0 +1,93 @@
+
+An object store for haxe/Node which looks a bit like Spod.
+----------------------------------------------------------
+
+WARNING: In heavy dev. Initial release for comment.
+
+Different drivers may be created, for now I have a Redis driver. This system serializes
+objects to Redis using haxe.Serializer. Objects can be inserted, o.insert(), updated and synced.
+Objects do not declaritively specify children instead, and object can link itself to a parent
+with o.link(p), and a parent can then get it's children like this, p.linked(Accounts,callback),
+notice that a parent can have children of many types.
+
+Search on any (single) field can be done by creating an index function. You can supply an
+array of index function using the _indexOn static var.
+
+This requires my bdog-redis project and Fictorial's redis driver installed.
+
+
+class User extends PObj {
+  public static var mgr = new UserMgr();
+
+  static var _indexOn:Array<PIndex> = [
+      {name:"email",filter:function(el) {
+        return el.email; }
+      }
+   ];
+  
+  public var firstname:String;
+  public var lastname:String;
+  public var email:String;
+  public var password:String;
+  public var signupOn:String;
+  public var site:String;
+  public var role:Role;
+  public var handle:String;
+  public var updatedBy:String;
+}
+
+class Account extends PObj  {
+  public static var mgr = new AccountMgr();
+  
+  public var type:AccountType;
+  public var site:String;
+  public var balance:Float;
+  public var currency:String;
+  public var status:AccStatus;
+  public var lastTransOn:String;
+}
+
+
+except the default driver is for Redis.
+
+For example here's a signup function
+
+ public static function
+  signUp(email:String,password:String,
+         first:String,last:String,handle:String,
+         role:Role,site:String,
+         ip:String,fn:{uuid:String,user:User}->Void) {
+
+    User.mgr.find("email",email,function(user) {
+        if (user == null){
+          var
+            entryDate = Date.now().toString(),
+            u = new User();
+          
+          u.email=email;
+          u.password=password;
+          u.firstname=first;
+          u.lastname=last;
+          u.handle=handle;
+          u.role=role;
+          u.site=site;
+          u.signupOn = entryDate;
+          u.updatedBy = null;          
+          
+          u.insert(function(uid:String) {
+              var accs = Account.mgr.createDefaults(u,site);
+              Account.mgr.insertMany(accs,function(ids) {
+                  newSession(u,ip,function(uuid) {
+                      fn({uuid:uuid,user:u});                  
+                      var trns = TXN.mgr.createDefaults(accs,entryDate);
+                      TXN.mgr.insertMany(trns,function(d) {
+                          fn({uuid:uuid,user:u});
+                        });
+                    });
+                });
+            });
+        } else {
+          fn({uuid:null,user:user});
+        }
+      });
+  }

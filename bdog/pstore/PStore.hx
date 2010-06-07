@@ -1,5 +1,7 @@
 package bdog.pstore;
 
+import bdog.pstore.PDrv;
+
 typedef PRef = String;
 typedef PIndex = { name:String, filter:Dynamic->String };
 
@@ -42,12 +44,12 @@ class PObj {
   
   public function
   delete() {
-    PMgr.driver.del(this);
+    PMgr.driver.rm(this);
   }
 
   public function
-  update() {
-    PMgr.driver.update(this);
+  update(cb) {
+    PMgr.driver.update(this,cb);
   }
 
   public function
@@ -71,7 +73,7 @@ class PObj {
   }
 
   public function
-  linked(inKls:Class<Dynamic>,cb:Array<Dynamic>->Void) {
+  linked<T>(inKls:Class<T>,cb:Array<T>->Void) {
     var klsName = Type.getClassName(Type.getClass(this));
     PMgr.driver.linked(inKls,ref(),0,-1,cb);
   }
@@ -106,6 +108,11 @@ class PMgr<T:PObj> {
   public function
   indexed(s:Int,e:Int,index:String,cb:Array<Dynamic>->Void) {
     driver.indexed(klsName,s,e,index,cb);
+  }
+
+  public function
+  range<T>(s:Int,e:Int,cb:Array<T>->Void) {
+    driver.range(klsName,s,e,cb);
   }
 
   public function

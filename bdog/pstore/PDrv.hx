@@ -10,8 +10,9 @@ interface PDrv {
   function sync(instance:PObj,cb:Bool->Void):Void;
   function find(klsName:String,index:String,key:String,cb:Dynamic->Void):Void;
   function nextID(kls:Class<Dynamic>,cb:PRef->Void):Void;
-  function update(instance:PObj):Void;
-  function del(instance:PObj):Void;
-  function linked(kls:Class<Dynamic>,or:PRef,s:Int,e:Int,cb:Array<Dynamic>->Void):Void;
+  function update(instance:PObj,cb:Bool->Void):Void;
+  function rm(instance:PObj):Void;
+  function linked<T>(kls:Class<T>,or:PRef,s:Int,e:Int,cb:Array<T>->Void):Void;
   function indexed(klsName:String,start:Int,end:Int,index:String,cb:Array<Dynamic>->Void):Void;
+  function range<T>(klsName:String,start:Int,end:Int,cb:Array<T>->Void):Void;
 }

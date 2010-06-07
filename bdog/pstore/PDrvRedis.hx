@@ -32,12 +32,13 @@ private class RPool {
 }
 
 class PDrvRedis implements PDrv {
-  public static var ALL = "all:";
-  public static var HASH = "h_";
-  public static var ZSET = "z_";
-  public static var SET = "s_";
-  public static var SERIAL = "serial:";
-  public static var TEXT = "t_";
+  static var ALL = "all:";
+  static var HASH = "h_";
+  static var ZSET = "z_";
+  static var SET = "s_";
+  static var SERIAL = "serial:";
+  static var TEXT = "t_";
+  static var OBJECT = "object";
   
   public static var pool = new RPool(5);
 
@@ -58,7 +59,7 @@ class PDrvRedis implements PDrv {
             instance._id = sid;
           
           pool.use(function(conn) {
-              var o:Array<Dynamic> = [sid,"object",haxe.Serializer.run(instance)];
+              var o:Array<Dynamic> = [sid,OBJECT,haxe.Serializer.run(instance)];
               if (instance._parent != null) {
                 o.push("parent");
                 o.push(instance._parent);
@@ -100,7 +101,7 @@ class PDrvRedis implements PDrv {
   public function
   load(id:String,fn:Dynamic->Void) {
     pool.use(function(conn) {
-        conn.hget(id,"object",function(err,v) {
+        conn.hget(id,OBJECT,function(err,v) {
           if (v != null) {
             var obj = haxe.Unserializer.run(new String(v));
             //instances.set(id,obj);
@@ -169,20 +170,38 @@ class PDrvRedis implements PDrv {
   }
 
   public function
-  update(instance:PObj) {
+  update(instance:PObj,cb:Bool->Void) {
     var
       kls = Type.getClass(instance),
       klsName = Type.getClassName(kls),
       obj = haxe.Serializer.run(instance);
 
     pool.use(function(conn) {
-        conn.hset(instance.ref(),"object",obj,function(e,v) {
-            indexEntry(conn,kls,klsName,instance);
-            trace("updated");
+        conn.hset(instance.ref(),OBJECT,obj,function(e,v) {
+            if (e == null) {
+              indexEntry(conn,kls,klsName,instance);
+              cb(true);
+            } else {
+              cb(false);
+            }
+            
           });
       });
   }
 
+  public function
+  rm(instance:PObj) {
+    var
+      id = instance.ref();
+    pool.use(function(conn) {
+        // this should be MULTI/EXEC when it exists
+        conn.lrem(ALL+instance.className(),1,id,function(e,v) {
+            delIndexEntry(instance);
+            //instances.remove(id);
+          });
+      });
+  }
+  
   static inline function
   indexName(klsName,name) {
     return "index:"+klsName+":"+name;
@@ -202,6 +221,15 @@ class PDrvRedis implements PDrv {
         }
       });
   }
+
+  static function
+  delIndexEntry(instance:PObj) {
+    pool.use(function(conn) {
+        eachIndex(instance,function(index) {
+            conn.hdel(indexName(instance.className(),index.name),instance.ref(),ignore);
+          });
+      });
+  }
   
   static function
   eachIndex(instance:PObj,cb:PIndex->Void) {
@@ -216,44 +244,29 @@ class PDrvRedis implements PDrv {
     }
   }
 
-  static function
-  delIndex(instance:PObj) {
-    pool.use(function(conn) {
-        eachIndex(instance,function(index) {
-            conn.zrem("index:"+instance.className()+":"+index.name,instance.ref(),ignore);
-          });
-      });
-  }
-           
   public function
-  del(instance:PObj) {
-    var
-      id = instance.ref();
-    pool.use(function(conn) {
-        // this should be MULTI/EXEC when it exists
-        conn.lrem(ALL+instance.className(),1,id,function(e,v) {
-            conn.del(id,ignore);   
-            //instances.remove(id);
-          });
-      });
-  }
-
-  public function
-  linked(inKls:Class<Dynamic>,forObject:PRef,start:Int,end:Int,cb:Array<Dynamic>->Void) {
+  linked<T>(inKls:Class<T>,forObject:PRef,start:Int,end:Int,cb:Array<T>->Void) {
     var
       klsName = Type.getClassName(inKls),
-      spec = [forObject+":children:"+klsName,"limit",start,end,"get","*->object"];
+      spec = [forObject+":children:"+klsName,"limit",start,end,"get","*->"+OBJECT];
     sorted(spec,cb);
   }
 
   public function
   indexed(klsName:String,start:Int,end:Int,index:String,cb:Array<Dynamic>->Void) {
-    var spec = ["index:"+klsName+":"+index,"by","nosort","limit",start,end,"get","*->object"];
+    var spec = ["index:"+klsName+":"+index,"by","nosort","limit",start,end,"get","*->"+OBJECT];
     sorted(spec,cb);
   }
 
+  public function
+  range<T>(klsName:String,start:Int,end:Int,cb:Array<T>->Void) {
+    pool.use(function(conn) {
+        sorted([ALL+klsName,"limit",start,end,"get","*->"+OBJECT],cb);
+      });
+  }
+
   static function
-  sorted(spec:Array<Dynamic>,cb:Array<Dynamic>->Void) {
+  sorted<T>(spec:Array<T>,cb:Array<T>->Void) {
     trace("spec is "+spec);
     pool.use(function(conn) {
         conn.sort(spec,function(e,members) {
@@ -263,9 +276,9 @@ class PDrvRedis implements PDrv {
   }
 
   static function
-  getObjects(members:Array<Dynamic>,cb:Array<Dynamic>->Void) {
+  getObjects<T>(members:Array<Dynamic>,cb:Array<T>->Void) {
     if (members != null) {
-      var objArr:Array<Dynamic> = new Array();
+      var objArr:Array<T> = new Array();
       while(members.length > 0) {
         objArr.push(haxe.Unserializer.run(new String(members.shift())));
       }
