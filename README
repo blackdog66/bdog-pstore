@@ -48,8 +48,6 @@ class Account extends PObj  {
 }
 
 
-except the default driver is for Redis.
-
 For example here's a signup function
 
  public static function
